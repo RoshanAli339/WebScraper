@@ -112,9 +112,11 @@ class NSE:
         print(pd.DataFrame(tradeInfo).T)
         print(pd.DataFrame(yearlyInfo).T)
 
-    def dailyChart(self, symbol):
+    def dailyChart(self, symbol, preOpen=False):
         encodedSymbol = urllib.parse.quote(symbol, safe='')
-        apiUrl = "https://www.nseindia.com/api/chart-databyindex?index="+encodedSymbol
+        apiUrl = "https://www.nseindia.com/api/chart-databyindex?index="+encodedSymbol+"EQN"
+        if preOpen:
+            apiUrl += "&preopen=true"
         response = self.session.get(apiUrl)
         data = response.json()
         data = data['grapthData']
@@ -124,7 +126,9 @@ class NSE:
         timeStamps = [datetime.strptime(i, '%H:%M:%S') for i in list(df['Timestamp'])]
         time_difference = timeStamps[-1] - timeStamps[0]
 
-        if time_difference <= timedelta(hours=4):
+        if time_difference <= timedelta(minutes=30):
+            interval = timedelta(minutes=5)
+        elif time_difference <= timedelta(hours=4):
             interval = timedelta(minutes=30)
         elif time_difference <= timedelta(hours=8):
             interval = timedelta(hours=1)
