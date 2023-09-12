@@ -13,6 +13,7 @@ class NSE:
         self.session.headers.update(self.headers)
         self.allIndices = {}
         self.equityShares = {}
+        self.sme = {}
 
     def all_indices(self):
         url = "https://www.nseindia.com/api/allIndices"
@@ -146,6 +147,34 @@ class NSE:
         plt.xticks(selected_data['Timestamp'], selected_data['Timestamp'], rotation=45)
         plt.tight_layout()
         plt.show()
+
+    def smeMarket(self):
+        apiUrl = "https://www.nseindia.com/api/live-analysis-emerge"
+        response = self.session.get(url=apiUrl)
+        data = response.json()['data']
+        symbol, lastPrice, openPrice, dayHigh, dayLow, change, pChange, totalTradeVol, totalTradeVal = ([] for i in
+                                                                                                        range(9))
+        for i in data:
+            symbol.append(i['symbol'])
+            lastPrice.append(i['lastPrice'])
+            openPrice.append(i['open'])
+            dayHigh.append(i['dayHigh'])
+            dayLow.append(i['dayLow'])
+            change.append(i['change'])
+            pChange.append(i['pChange'])
+            totalTradeVol.append(i['totalTradedVolume'])
+            totalTradeVal.append(i['totalTradedValue'])
+        self.sme.update({
+            'Symbol': symbol,
+            'Last Price': lastPrice,
+            'Opening Price': openPrice,
+            'Day High Price': dayHigh,
+            'Day Low Price': dayLow,
+            'Change in value': change,
+            'Percentage Change': pChange,
+            'Total Traded Volume': totalTradeVol,
+            'Total Traded Value': totalTradeVal
+        })
 
 if __name__ == '__main__':
     nse = NSE()
