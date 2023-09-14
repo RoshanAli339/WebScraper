@@ -11,34 +11,114 @@ class NSE:
         self.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'}
         self.session = requests.Session()
         self.session.headers.update(self.headers)
-        self.allIndices = {}
+        self.allIndices = pd.DataFrame()
         self.equityShares = {}
-        self.sme = {}
+        self.sme = pd.DataFrame()
 
-    def all_indices(self):
+    def bmiToday(self):
         url = "https://www.nseindia.com/api/allIndices"
         response = self.session.get(url=url)
-        data = response.json()['data']
-        indexName, indexSymbol, current, percentChange, opening, high, low, prevClose = [], [], [], [], [], [], [], []
+        data = response.json()
+        data = data['data']
+        indexName, indexSymbol, lastPrice, percentChange, opening, high, low, prevClose, pChange365 = [], [], [], [], [], [], [], [], []
         for index in data:
             indexName.append(index['index'])
             indexSymbol.append(index['indexSymbol'])
-            current.append(index['last'])
+            lastPrice.append(index['last'])
             percentChange.append(index['percentChange'])
             opening.append(index['open'])
             high.append(index['high'])
             low.append(index['low'])
             prevClose.append(index['previousClose'])
-        self.allIndices.update({
+            pChange365.append(index['perChange365d'])
+        self.allIndices = pd.DataFrame({
             'Index': indexName,
             'Symbol': indexSymbol,
-            'Current': current,
+            'Last Price': lastPrice,
             '%Change': percentChange,
             'Open': opening,
             'High': high,
             'Low': low,
-            'Perv. Close': prevClose
+            'Perv. Close': prevClose,
+            'Percent Change/Yr': pChange365
         })
+
+    def getHistoricalIndex(self, index):
+        encodedIndex = urllib.parse.quote(index, safe='')
+        today = datetime.now().strftime('%d-%m-%Y')
+        oneYearAgo = (datetime.now() - timedelta(days=365)).strftime('%d-%m-%Y')
+
+        apiUrl = f"https://www.nseindia.com/api/historical/indicesHistory?indexType={encodedIndex}&from={oneYearAgo}&to={today}"
+
+        response = self.session.get(url=apiUrl)
+        data = response.json()
+        data = data['data']['indexCloseOnlineRecords']
+        dt, closing = [], []
+        for day in data:
+            d = datetime.strptime(day['EOD_TIMESTAMP'], '%d-%b-%Y')
+            dt.append(d.strftime('%Y-%m-%d'))
+            closing.append(day['EOD_CLOSE_INDEX_VAL'])
+        data = {
+            'Date': dt,
+            'Closing Price': closing
+        }
+        return pd.DataFrame(data)
+
+    def getHistoricalStock(self, symbol):
+        today = datetime.now().strftime('%d-%m-%Y')
+        oneYearAgo = (datetime.now() - timedelta(days=365)).strftime('%d-%m-%Y')
+        apiUrl = f"https://www.nseindia.com/api/historical/securityArchives?from={oneYearAgo}&to={today}&symbol={symbol}&dataType=priceVolume&series=ALL"
+        response = self.session.get(url=apiUrl)
+        data = response.json()
+        data = data['data']
+        dt, closing = [], []
+        for day in data:
+            dt.append(day['CH_TIMESTAMP'])
+            closing.append(day['CH_CLOSING_PRICE'])
+        data = {
+            'Date': dt,
+            'Closing Price': closing
+        }
+        return pd.DataFrame(data)
+
+    def topIndicesToday(self):
+        self.all_indices()
+        sortedIndices = self.allIndices.sort_values(by='Last Price', ascending=False)
+        sortedIndices = sortedIndices.head(10)
+        index_names = sortedIndices['Index']
+        market_capitalization = sortedIndices['Last Price']  # You can use other relevant data as well
+
+        # Create a bar chart to visualize market capitalization by index
+        plt.figure(figsize=(12, 6))
+        plt.bar(index_names, market_capitalization, color='skyblue')
+        plt.xlabel('Indices')
+        plt.ylabel('Market Capitalization (Open)')
+        plt.title('Market Overview: Market Capitalization by Index')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+
+        # Show the chart
+        plt.show()
+
+    def topStocksToday(self, eqIndex):
+        self.equity(eqIndex)
+        df = self.equityShares[eqIndex]
+        sortedDf = df.sort_values(by='Last Price', ascending=False)
+        sortedDf = sortedDf.head(10)
+        symbols = sortedDf['SYMBOL']
+        market_capitalization = sortedDf['Last Price']  # You can use other relevant data as well
+
+        # Create a bar chart to visualize market capitalization by index
+        plt.figure(figsize=(12, 6))
+        plt.bar(symbols, market_capitalization, color='skyblue')
+        plt.xlabel('Symbols')
+        plt.ylabel('Market Capitalization (Open)')
+        plt.title('Market Overview: Market Capitalization by Equity Stock')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+
+        # Show the chart
+        plt.show()
 
     def equity(self, eqIndex):
         encodedIndex = urllib.parse.quote(eqIndex, safe='')
@@ -46,8 +126,8 @@ class NSE:
         response = self.session.get(url=apiUrl)
         data = response.json()
         data = data['data']
-        symbol, lastPrice, change, percentChange, opening, high, low, prevClose, totalTradeVol, totalTradeVal = \
-            ([] for i in range(10))
+        symbol, lastPrice, change, percentChange, opening, high, low, prevClose, totalTradeVol, totalTradeVal, pChange365 = \
+            ([] for i in range(11))
         for index in data:
             symbol.append(index['symbol'])
             lastPrice.append(index['lastPrice'])
@@ -59,6 +139,7 @@ class NSE:
             prevClose.append(index['previousClose'])
             totalTradeVol.append(index['totalTradedVolume'])
             totalTradeVal.append(index['totalTradedValue']/10**5)
+            pChange365.append(index['perChange365d'])
         data = {
             'SYMBOL': symbol,
             'Last Price': lastPrice,
@@ -70,8 +151,11 @@ class NSE:
             'Prev. Close': prevClose,
             'Volume(shares)': totalTradeVol,
             'Value(Rupees)': totalTradeVal,
+            'Percent Change/Yr': pChange365
         }
-        self.equityShares.update({eqIndex: data})
+        df = pd.DataFrame(data)
+        df = df.drop(0)
+        self.equityShares.update({eqIndex: df})
 
     def get_quote(self, symbol):
         symbol = urllib.parse.quote(symbol, safe='')
@@ -113,9 +197,11 @@ class NSE:
         print(pd.DataFrame(tradeInfo).T)
         print(pd.DataFrame(yearlyInfo).T)
 
-    def dailyChart(self, symbol, preOpen=False):
+    def dailyChart(self, symbol, type='stock', preOpen=False):
         encodedSymbol = urllib.parse.quote(symbol, safe='')
-        apiUrl = "https://www.nseindia.com/api/chart-databyindex?index="+encodedSymbol+"EQN"
+        apiUrl = "https://www.nseindia.com/api/chart-databyindex?index="+encodedSymbol
+        if type=='stock':
+            apiUrl += 'EQN'
         if preOpen:
             apiUrl += "&preopen=true"
         response = self.session.get(apiUrl)
@@ -148,7 +234,7 @@ class NSE:
         plt.tight_layout()
         plt.show()
 
-    def smeMarket(self):
+    def smeToday(self):
         apiUrl = "https://www.nseindia.com/api/live-analysis-emerge"
         response = self.session.get(url=apiUrl)
         data = response.json()['data']
@@ -164,7 +250,7 @@ class NSE:
             pChange.append(i['pChange'])
             totalTradeVol.append(i['totalTradedVolume'])
             totalTradeVal.append(i['totalTradedValue'])
-        self.sme.update({
+        self.sme = pd.DataFrame({
             'Symbol': symbol,
             'Last Price': lastPrice,
             'Opening Price': openPrice,
@@ -176,6 +262,8 @@ class NSE:
             'Total Traded Value': totalTradeVal
         })
 
+
 if __name__ == '__main__':
     nse = NSE()
-    nse.dailyChart('ADANIPORTSEQN')
+    data = nse.getHistoricalStock('TCS')
+    print(data)
