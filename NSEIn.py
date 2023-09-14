@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import urllib.parse
 import matplotlib.pyplot as plt
+from plotly import graph_objs as go
 
 
 class NSE:
@@ -47,20 +48,33 @@ class NSE:
         encodedIndex = urllib.parse.quote(index, safe='')
         today = datetime.now().strftime('%d-%m-%Y')
         oneYearAgo = (datetime.now() - timedelta(days=365)).strftime('%d-%m-%Y')
+        twoYearsAgo = (datetime.now() - timedelta(days=365*2)).strftime('%d-%m-%Y')
+        threeYearsAgo = (datetime.now() - timedelta(days=365*3)).strftime('%d-%m-%Y')
 
         apiUrl = f"https://www.nseindia.com/api/historical/indicesHistory?indexType={encodedIndex}&from={oneYearAgo}&to={today}"
-
+        apiUrl2 = f"https://www.nseindia.com/api/historical/indicesHistory?indexType={encodedIndex}&from={twoYearsAgo}&to={oneYearAgo}"
+        # apiUrl3 = f"https://www.nseindia.com/api/historical/indicesHistory?indexType={encodedIndex}&from={threeYearsAgo}&to={twoYearsAgo}"
         response = self.session.get(url=apiUrl)
+        response2 = self.session.get(url=apiUrl2)
+        # response3 = self.session.get(url=apiUrl3)
         data = response.json()
+        data2 = response2.json()
+        # data3 = response3.json()
         data = data['data']['indexCloseOnlineRecords']
-        dt, closing = [], []
+        data2 = data2['data']['indexCloseOnlineRecords']
+        # data3 = data3['data']['indexCloseOnlineRecords']
+        data.extend(data2)
+        # data.extend(data3)
+        dt, opening, closing = [], [], []
         for day in data:
             d = datetime.strptime(day['EOD_TIMESTAMP'], '%d-%b-%Y')
             dt.append(d.strftime('%Y-%m-%d'))
+            opening.append(day['EOD_OPEN_INDEX_VAL'])
             closing.append(day['EOD_CLOSE_INDEX_VAL'])
         data = {
             'Date': dt,
-            'Closing Price': closing
+            'Close': closing,
+            'Open': opening
         }
         return pd.DataFrame(data)
 
@@ -210,29 +224,10 @@ class NSE:
         df = pd.DataFrame(data)
         df.columns = ["Timestamp", "Price"]
         df['Timestamp'] = pd.to_datetime(df['Timestamp'], unit='ms').dt.strftime('%H:%M:%S')
-        timeStamps = [datetime.strptime(i, '%H:%M:%S') for i in list(df['Timestamp'])]
-        time_difference = timeStamps[-1] - timeStamps[0]
-
-        if time_difference <= timedelta(minutes=30):
-            interval = timedelta(minutes=5)
-        elif time_difference <= timedelta(hours=4):
-            interval = timedelta(minutes=30)
-        elif time_difference <= timedelta(hours=8):
-            interval = timedelta(hours=1)
-        else:
-            interval = timedelta(hours=2)
-        num_ticks = int(time_difference.total_seconds() / interval.total_seconds())
-        step = len(df) // num_ticks
-        selected_data = df.iloc[::step]
-
-        # Create a plot
-        plt.figure(figsize=(10, 6))
-        plt.plot(df['Timestamp'], df['Price'])
-
-        # Customize the X-axis labels using the selected data
-        plt.xticks(selected_data['Timestamp'], selected_data['Timestamp'], rotation=45)
-        plt.tight_layout()
-        plt.show()
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=df['Timestamp'], y=df['Price'], name='stock Price'))
+        fig.layout.update(title_text='Time Series data with Rangeslider')
+        fig.show()
 
     def smeToday(self):
         apiUrl = "https://www.nseindia.com/api/live-analysis-emerge"
@@ -265,5 +260,6 @@ class NSE:
 
 if __name__ == '__main__':
     nse = NSE()
-    data = nse.getHistoricalStock('TCS')
+    data = nse.getHistoricalIndex('NIFTY 50')
     print(data)
+
