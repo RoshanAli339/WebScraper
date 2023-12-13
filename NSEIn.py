@@ -16,7 +16,7 @@ class NSE:
         self.equityShares = {}
         self.sme = pd.DataFrame()
 
-    def bmiToday(self):
+    def normalMarketToday   (self):
         url = "https://www.nseindia.com/api/allIndices"
         response = self.session.get(url=url)
         data = response.json()
